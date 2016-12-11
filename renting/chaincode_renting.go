@@ -26,12 +26,20 @@ import (
 	"regexp"
 )
 
-//CURRENT WORKAROUND USES ROLES CHANGE WHEN OWN USERS CAN BE CREATED SO THAT IT READ 1, 2, 3, 4, 5
+//CURRENT WORKAROUND USES ROLES CHANGE WHEN OWN USERS CAN BE CREATED SO THAT IT READ 1, 2, 3, 4
 const   AUTHORITY      =  "regulator"
-const   MANUFACTURER   =  "manufacturer"
-const   PRIVATE_ENTITY =  "private"
-const   LEASE_COMPANY  =  "lease_company"
-const   SCRAP_MERCHANT =  "scrap_merchant"
+const   HOUSE_OWNER	 =  "house_owner"
+const   AGENT_COMPANY  =  "agent_company"
+const   LEASEE		=  "leasee"
+
+//==============================================================================================================================
+//	 Status types - Asset lifecycle is broken down into 4 statuses, this is part of the business logic to determine what can
+//					be done to the house at points in it's lifecycle
+//==============================================================================================================================
+const   STATE_TEMPLATE  	=  0
+const   STATE_HOUSEOWNER  	=  1
+const   STATE_AGENT 		=  2
+const   STATE_LEASEE 		=  3
 
 // SimpleChaincode example simple Chaincode implementation
 type SimpleChaincode struct {
@@ -153,7 +161,7 @@ func (t *SimpleChaincode) write(stub shim.ChaincodeStubInterface, args []string)
 //=================================================================================================================================
 //	 Create House - Creates the initial JSON for the house and then saves it to the ledger.
 //=================================================================================================================================
-func (t *SimpleChaincode) create_vehicle(stub shim.ChaincodeStubInterface, caller string, caller_affiliation string, _houseID string, _address string) ([]byte, error) {
+func (t *SimpleChaincode) create_house(stub shim.ChaincodeStubInterface, caller string, caller_affiliation string, _houseID string, _address string) ([]byte, error) {
 	var h House
 
 	house_ID       := "\"HouseID\":\""+_houseID+"\", "							// Variables to define the JSON
@@ -167,7 +175,7 @@ func (t *SimpleChaincode) create_vehicle(stub shim.ChaincodeStubInterface, calle
    		 fmt.Printf("CREATE_HOUSE: Invalid _houseID: %s", err); return nil, errors.New("Invalid _houseID")
   	}
 
-	if v5c_ID == "" || matched == false {
+	if _houseID == "" || matched == false {
 		fmt.Printf("CREATE_HOUSE: Invalid houseID provided")
 		return nil, errors.New("Invalid houseID provided")
 	}
@@ -248,4 +256,147 @@ func (t *SimpleChaincode) read(stub shim.ChaincodeStubInterface, args []string) 
 	}
 	
 	return valAsbytes, nil
+}
+
+//==============================================================================================================================
+// save_changes - Writes to the ledger the House struct passed in a JSON format. Uses the shim file's
+//				  method 'PutState'.
+//==============================================================================================================================
+func (t *SimpleChaincode) save_changes(stub shim.ChaincodeStubInterface, h House) (bool, error) {
+	bytes, err := json.Marshal(h)
+	if err != nil {
+		fmt.Printf("SAVE_CHANGES: Error converting house record: %s", err) 
+		return false, errors.New("Error converting house record") 
+	}
+	err = stub.PutState(h.HouseID, bytes)
+	if err != nil {
+		fmt.Printf("SAVE_CHANGES: Error storing house record: %s", err) 
+		return false, errors.New("Error storing house record") 
+	}
+	return true, nil
+}
+
+//==============================================================================================================================
+//	 Router Functions
+//==============================================================================================================================
+//	Invoke - Called on chaincode invoke. Takes a function name passed and calls that function. Converts some
+//		  initial arguments passed to other things for use in the called function e.g. name -> ecert
+//==============================================================================================================================
+func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
+	caller, caller_affiliation, err := t.get_caller_data(stub)
+	if err != nil { return nil, errors.New("Error retrieving caller information")}
+
+	argPos := 2
+	v, err := t.retrieve_house(stub, args[argPos])
+ 	if err != nil { 
+		fmt.Printf("INVOKE: Error retrieving house: %s", err) 
+		return nil, errors.New("Error retrieving house") 
+	}
+	if function == "authority_to_houseowner" { 
+		return t.authority_to_houseowner(stub, v, args[0], AUTHORITY, args[1], HOUSE_OWNER )
+	} else if  function == "houseowner_to_agent"   { 
+		return t.houseowner_to_agent(stub, v, args[0], HOUSE_OWNER, args[1], AGENT_COMPANY )
+	} else if  function == "agent_to_leasee" { 
+		return t.agent_to_leasee(stub, v, args[0], AGENT_COMPANY, args[1], LEASEE )
+	}
+	return nil, errors.New("Function of the name "+ function +" doesn't exist.")
+}
+
+//=================================================================================================================================
+//	 Transfer Functions
+//=================================================================================================================================
+//	 authority_to_houseowner
+//=================================================================================================================================
+func (t *SimpleChaincode) authority_to_houseowner(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string) ([]byte, error) {
+
+	if  h.Status	== STATE_TEMPLATE	&&
+		caller_affiliation	== AUTHORITY		&&
+		recipient_affiliation	== HOUSE_OWNER {		// If the roles and users are ok
+
+		h.Owner  = recipient_name		// then make the owner the new owner
+		h.Status = STATE_HOUSEOWNER // and mark it in the state of house owner
+	} else {	// Otherwise if there is an error
+		fmt.Printf("authority_to_houseowner: Permission Denied")
+                return nil, errors.New(fmt.Sprintf("Permission Denied. authority_to_houseowner))
+	}
+
+	_, err := t.save_changes(stub, h)						// Write new state
+
+	if err != nil {	
+		fmt.Printf("authority_to_houseowner: Error saving changes: %s", err) 
+		return nil, errors.New("Error saving changes")	
+	}
+	return nil, nil									// We are Done
+}
+
+//=================================================================================================================================
+//       houseowner_to_agent
+//=================================================================================================================================
+func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string) ([]byte, error) {
+
+        if  h.Status == STATE_HOUSEOWNER       &&
+          	h.Owner	== caller			&&
+                caller_affiliation == HOUSE_OWNER            &&
+                recipient_affiliation == AGENT_COMPANY {                // If the roles and users are ok
+
+                h.Owner  = recipient_name               // then make the owner the new owner
+                h.Status = STATE_AGENT // and mark it in the state of house owner
+        } else {        // Otherwise if there is an error
+                fmt.Printf("houseowner_to_agent: Permission Denied")
+                return nil, errors.New(fmt.Sprintf("Permission Denied. houseowner_to_agent))
+        }
+
+        _, err := t.save_changes(stub, h)                                               // Write new state
+
+        if err != nil {
+                fmt.Printf("houseowner_to_agent: Error saving changes: %s", err)
+                return nil, errors.New("Error saving changes")
+        }
+        return nil, nil                                                                 // We are Done
+}
+
+//=================================================================================================================================
+//       agent_to_leasee
+//=================================================================================================================================
+func (t *SimpleChaincode) agent_to_leasee(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string) ([]byte, error) {
+
+        if  h.Status == STATE_AGENT       &&
+          	h.Owner	== caller			&&
+                caller_affiliation == AGENT_COMPANY            &&
+                recipient_affiliation == LEASEE {                // If the roles and users are ok
+
+                h.Owner  = recipient_name               // then make the owner the new owner
+                h.Status = STATE_LEASEE // and mark it in the state of house owner
+        } else {        // Otherwise if there is an error
+                fmt.Printf("agent_to_leasee: Permission Denied")
+                return nil, errors.New(fmt.Sprintf("Permission Denied. agent_to_leasee))
+        }
+
+        _, err := t.save_changes(stub, h)                                               // Write new state
+
+        if err != nil {
+                fmt.Printf("agent_to_leasee: Error saving changes: %s", err)
+                return nil, errors.New("Error saving changes")
+        }
+        return nil, nil                                                                 // We are Done
+}
+
+//==============================================================================================================================
+//	 retrieve_house - Gets the state of the data at houseID in the ledger then converts it from the stored
+//					JSON into the House struct for use in the contract. Returns the House struct.
+//					Returns empty h if it errors.
+//==============================================================================================================================
+func (t *SimpleChaincode) retrieve_house(stub shim.ChaincodeStubInterface, houseID string) (House, error) {
+	var h House
+	bytes, err := stub.GetState(houseID);
+	if err != nil {	
+		fmt.Printf("RETRIEVE_HOUSE: Failed to invoke house_code: %s", err)
+		return v, errors.New("RETRIEVE_HOUSE: Error retrieving house with houseID = " + houseID) 
+	}
+	err = json.Unmarshal(bytes, &h)
+  	if err != nil {	
+		fmt.Printf("RETRIEVE_HOUSE: Corrupt house record "+string(bytes)+": %s", err) 
+ 		 return h, errors.New("RETRIEVE_HOUSE: Corrupt house record"+string(bytes))	
+	}
+	return v, nil
 }
