@@ -19,9 +19,19 @@ package main
 import (
 	"errors"
 	"fmt"
-
+	"strconv"
+	"strings"
 	"github.com/hyperledger/fabric/core/chaincode/shim"
+	"encoding/json"
+	"regexp"
 )
+
+//CURRENT WORKAROUND USES ROLES CHANGE WHEN OWN USERS CAN BE CREATED SO THAT IT READ 1, 2, 3, 4, 5
+const   AUTHORITY      =  "regulator"
+const   MANUFACTURER   =  "manufacturer"
+const   PRIVATE_ENTITY =  "private"
+const   LEASE_COMPANY  =  "lease_company"
+const   SCRAP_MERCHANT =  "scrap_merchant"
 
 // SimpleChaincode example simple Chaincode implementation
 type SimpleChaincode struct {
@@ -35,7 +45,7 @@ type House struct{
 }
 
 type House_Holder struct{
-  HIDs	[]string `json:"v5cs"`
+  HIDs	[]string `json:"hids"`
 }
 
 // ============================================================================================================================
@@ -105,11 +115,15 @@ func (t *SimpleChaincode) add_ecert(stub shim.ChaincodeStubInterface, name strin
 func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
 	fmt.Println("invoke is running " + function)
 
+	var caller, caller_affiliation string
+
 	// Handle different functions
 	if function == "init" {													//initialize the chaincode state, used as reset
 		return t.Init(stub, "init", args)
 	} else if function == "write" {
 		return t.write(stub, args)
+	} else if function =="create_house" {
+		rturn t.create_house(stub, caller, caller_affiliation, args[0], args[1])
 	}
 	fmt.Println("invoke did not find func: " + function)					//error
 
@@ -131,6 +145,74 @@ func (t *SimpleChaincode) write(stub shim.ChaincodeStubInterface, args []string)
 	if err != nil {
 		return nil, err
 	}
+	return nil, nil
+}
+
+//=================================================================================================================================
+//	 Create Function
+//=================================================================================================================================
+//	 Create House - Creates the initial JSON for the house and then saves it to the ledger.
+//=================================================================================================================================
+func (t *SimpleChaincode) create_vehicle(stub shim.ChaincodeStubInterface, caller string, caller_affiliation string, _houseID string, _address string) ([]byte, error) {
+	var h House
+
+	house_ID       := "\"HouseID\":\""+_houseID+"\", "							// Variables to define the JSON
+	owner          := "\"Owner\":\""+caller+"\", "
+	address	       := "\"Address\":\""+_address\", "
+	status         := "\"Status\":0"
+
+	house_json := "{"+house_ID+owner+address+status+"}" 	// Concatenates the variables to create the total JSON object
+	matched, err := regexp.Match("^[A-z][A-z][0-9]{7}", []byte(_houseID))  // matched = true if the _houseID passed fits format of two letters followed by seven digits
+	if err != nil {
+   		 fmt.Printf("CREATE_HOUSE: Invalid _houseID: %s", err); return nil, errors.New("Invalid _houseID")
+  	}
+
+	if v5c_ID == "" || matched == false {
+		fmt.Printf("CREATE_HOUSE: Invalid houseID provided")
+		return nil, errors.New("Invalid houseID provided")
+	}
+
+	err = json.Unmarshal([]byte(house_json), &h)	// Convert the JSON defined above into a house object for go
+	if err != nil {
+   		return nil, errors.New("Invalid JSON object")
+ 	}
+	record, err := stub.GetState(h.HouseID)  // If not an error then a record exists so cant create a new house with this HouseID as it must be unique
+
+	if record != nil {
+    		return nil, errors.New("House already exists")
+  	}
+
+	if caller_affiliation != AUTHORITY {	 // Only the regulator can create a new house 
+		return nil, errors.New(fmt.Sprintf("Permission Denied. create_house. %v === %v", caller_affiliation, AUTHORITY))
+	}
+
+	_, err  = t.save_changes(stub, v)
+	if err != nil {
+    		fmt.Printf("CREATE_HOUSE: Error saving changes: %s", err)
+   		return nil, Errors.New("Error saving changes")
+  	}
+
+	bytes, err := stub.GetState("HouseIDs")
+	if err != nil {
+    		return nil, errors.New("Unable to get HouseIDs")
+  	}
+
+	var houseIDs House_Holder
+	err = json.Unmarshal(bytes, &houseIDs)
+	if err != nil {
+    		return nil, errors.New("Corrupt House_Holder record")
+  	}
+
+	houseIDs.HIDs= append(houseIDs.HIDs, houseID)
+	bytes, err = json.Marshal(houseIDs)
+	if err != nil {
+    		fmt.Print("Error creating House_Holder record")
+  	}
+
+	err = stub.PutState("HouseIDs", bytes)
+	if err != nil {
+    		return nil, errors.New("Unable to put the state")
+  	}
 	return nil, nil
 }
 
