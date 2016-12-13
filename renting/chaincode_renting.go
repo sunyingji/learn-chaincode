@@ -137,6 +137,8 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function stri
 	// Handle different functions
 	if function == "init" {	//initialize the chaincode state, used as reset
 		return t.Init(stub, "init", args)
+	} else if function == "ping" {
+		return t.ping(stub)
 	} else if function == "write" {
 		return t.write(stub, args)
 	} else if function =="create_house" {
@@ -451,3 +453,11 @@ func (t *SimpleChaincode) get_house_details(stub shim.ChaincodeStubInterface, h 
 	}
 }
 
+//=================================================================================================================================
+//	 Ping Function
+//=================================================================================================================================
+//	 Pings the peer to keep the connection alive
+//=================================================================================================================================
+func (t *SimpleChaincode) ping(stub shim.ChaincodeStubInterface) ([]byte, error) {
+	return []byte("Hello, world!"), nil
+}
