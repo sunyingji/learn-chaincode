@@ -234,7 +234,13 @@ func (t *SimpleChaincode) Query(stub shim.ChaincodeStubInterface, function strin
 		return nil, nil;
 	} else if function == "read" {
 		return t.read(stub, args)
-	}
+	} else if function == "get_house_details" {
+                return t.read(stub, args)
+        } else if function == "get_houses" {
+                return t.read(stub, args)
+        }
+
+
 	fmt.Println("query did not find func: " + function)						//error
 
 	return nil, errors.New("Received unknown function query: " + function)
@@ -400,3 +406,58 @@ func (t *SimpleChaincode) retrieve_house(stub shim.ChaincodeStubInterface, house
 	}
 	return v, nil
 }
+
+//=================================================================================================================================
+//	 get_houses
+//=================================================================================================================================
+func (t *SimpleChaincode) get_houses(stub shim.ChaincodeStubInterface, caller string, caller_affiliation string) ([]byte, error) {
+	bytes, err := stub.GetState("HouseIDs")
+  	if err != nil { 
+		return nil, errors.New("Unable to get HouseIDs") 
+	}
+
+	var houseIDs House_Holder
+	err = json.Unmarshal(bytes, &houseIDs)
+	if err != nil {	
+		return nil, errors.New("Corrupt House_Holder") 
+	}
+
+	result := "["
+	var temp []byte
+	var h House
+	for _, hid := range houseIDs.HIDs {
+		h, err = t.retrieve_house(stub, hid)
+    		if err != nil {
+			return nil, errors.New("Failed to retrieve HID")
+		}
+		temp, err = t.get_house_details(stub, h, caller, caller_affiliation)
+		if err == nil {
+			result += string(temp) + ","
+		}
+	}
+
+	if len(result) == 1 {
+		result = "[]"
+	} else {
+		result = result[:len(result)-1] + "]"
+	}
+
+	return []byte(result), nil
+}
+
+//=================================================================================================================================
+//	 get_house_details
+//=================================================================================================================================
+func (t *SimpleChaincode) get_house_details(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string) ([]byte, error) {
+	bytes, err := json.Marshal(v)
+	if err != nil { 
+		return nil, errors.New("GET_HOUSE_DETAILS: Invalid house object") 
+	}
+	if	v.Owner	== caller		||
+		caller_affiliation == AUTHORITY	{
+		return bytes, nil
+	} else {
+		return nil, errors.New("Permission Denied. get_house_details")
+	}
+}
+
