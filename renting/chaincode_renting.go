@@ -268,7 +268,15 @@ func (t *SimpleChaincode) Query(stub shim.ChaincodeStubInterface, function strin
                 return t.get_house_details(stub, args[0], args[1], h)
         } else if function == "get_houses" {
                 return t.get_houses(stub, args[0], args[1])
+	} else if function == "invoke_agent_to_leasee" {
+                h, err := t.retrieve_house(stub, args[2])
+                if err != nil {
+                        fmt.Printf("QUERY: Error retrieving house : %s", err)
+                        return nil, errors.New("QUERY: Error retrieving house "+err.Error())
+                }
+                return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE )
         }
+
 
 
 	fmt.Println("query did not find func: " + function)						//error
