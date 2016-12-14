@@ -135,6 +135,13 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function stri
 		return t.write(stub, args)
 	} else if function =="create_house" {
 		return t.create_house(stub, caller, caller_affiliation, args[2], args[3])
+        } else if function == "invoke_agent_to_leasee_111" {
+                h, err := t.retrieve_house(stub, args[2])
+                if err != nil {
+                        fmt.Printf("QUERY: Error retrieving house : %s", err)
+                        return nil, errors.New("QUERY: Error retrieving house "+err.Error())
+                }
+                return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE )
         } else { 
 	        argPos := 2
         	h, err := t.retrieve_house(stub, args[argPos])
