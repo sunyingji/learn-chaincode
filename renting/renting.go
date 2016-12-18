@@ -50,7 +50,7 @@ type House struct{
   Owner		string	`json:"owner"`
   Status 	int	`json:"status"`
   HouseID	string	`json:"houseID"`	
-  Money		int	`json:"money"`
+  Money		string	`json:"money"`
 }
 
 type House_Holder struct{
@@ -142,7 +142,7 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function stri
                         fmt.Printf("QUERY: Error retrieving house : %s", err)
                         return nil, errors.New("QUERY: Error retrieving house "+err.Error())
                 }
-                return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE )
+                return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE, args[3] )
         } else { 
 	        argPos := 2
         	h, err := t.retrieve_house(stub, args[argPos])
@@ -195,7 +195,7 @@ func (t *SimpleChaincode) create_house(stub shim.ChaincodeStubInterface, caller 
 	owner          := "\"Owner\":\"" + caller + "\","
 	address	       := "\"Address\":\"" +_address + "\","
 	status         := "\"Status\":0,"
-	money         := "\"Money\":-1"
+	money         := "\"Money\":\"UNDEFINED\""
 
 	house_json := "{"+house_ID+owner+address+status+money+"}" 	// Concatenates the variables to create the total JSON object
 	matched, err := regexp.Match("^[A-z][A-z][0-9]{7}", []byte(_houseID))  // matched = true if the _houseID passed fits format of two letters followed by seven digits
@@ -283,7 +283,7 @@ func (t *SimpleChaincode) Query(stub shim.ChaincodeStubInterface, function strin
                         fmt.Printf("QUERY: Error retrieving house : %s", err)
                         return nil, errors.New("QUERY: Error retrieving house "+err.Error())
                 }
-                return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE )
+                return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE, args[3] )
         }
 
 
@@ -359,7 +359,7 @@ func (t *SimpleChaincode) authority_to_houseowner(stub shim.ChaincodeStubInterfa
 //=================================================================================================================================
 //       houseowner_to_agent
 //=================================================================================================================================
-func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string, _money int) ([]byte, error) {
+func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string, _money string) ([]byte, error) {
 
         if  h.Status == STATE_HOUSEOWNER       &&
           	h.Owner	== caller			&&
@@ -386,7 +386,7 @@ func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, 
 //=================================================================================================================================
 //       agent_to_leasee
 //=================================================================================================================================
-func (t *SimpleChaincode) agent_to_leasee(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string, _money int) ([]byte, error) {
+func (t *SimpleChaincode) agent_to_leasee(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string, _money string) ([]byte, error) {
 
         if  h.Status == STATE_AGENT       &&
           	h.Owner	== caller			&&
