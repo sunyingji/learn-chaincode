@@ -50,6 +50,7 @@ type House struct{
   Owner		string	`json:"owner"`
   Status 	int	`json:"status"`
   HouseID	string	`json:"houseID"`	
+  Money		int	`json:"money"`
 }
 
 type House_Holder struct{
@@ -153,9 +154,9 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function stri
 		if function == "authority_to_houseowner" {
                 	return t.authority_to_houseowner(stub, h, args[0], AUTHORITY, args[1], HOUSE_OWNER )
         	} else if  function == "houseowner_to_agent"   {
-                	return t.houseowner_to_agent(stub, h, args[0], HOUSE_OWNER, args[1], AGENT_COMPANY )
+                	return t.houseowner_to_agent(stub, h, args[0], HOUSE_OWNER, args[1], AGENT_COMPANY, args[3] )
         	} else if  function == "agent_to_leasee" {
-                	return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE )
+                	return t.agent_to_leasee(stub, h, args[0], AGENT_COMPANY, args[1], LEASEE, args[3] )
         	}
 	}
 
@@ -193,9 +194,10 @@ func (t *SimpleChaincode) create_house(stub shim.ChaincodeStubInterface, caller 
 	house_ID       := "\"HouseID\":\"" + _houseID + "\","	// Variables to define the JSON
 	owner          := "\"Owner\":\"" + caller + "\","
 	address	       := "\"Address\":\"" +_address + "\","
-	status         := "\"Status\":0"
+	status         := "\"Status\":0,"
+	money         := "\"Money\":-1"
 
-	house_json := "{"+house_ID+owner+address+status+"}" 	// Concatenates the variables to create the total JSON object
+	house_json := "{"+house_ID+owner+address+status+money+"}" 	// Concatenates the variables to create the total JSON object
 	matched, err := regexp.Match("^[A-z][A-z][0-9]{7}", []byte(_houseID))  // matched = true if the _houseID passed fits format of two letters followed by seven digits
 	if err != nil {
    		 fmt.Printf("CREATE_HOUSE: Invalid _houseID: %s", err); return nil, errors.New("Invalid _houseID")
@@ -357,7 +359,7 @@ func (t *SimpleChaincode) authority_to_houseowner(stub shim.ChaincodeStubInterfa
 //=================================================================================================================================
 //       houseowner_to_agent
 //=================================================================================================================================
-func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string) ([]byte, error) {
+func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string, _money int) ([]byte, error) {
 
         if  h.Status == STATE_HOUSEOWNER       &&
           	h.Owner	== caller			&&
@@ -366,6 +368,7 @@ func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, 
 
                 h.Owner  = recipient_name               // then make the owner the new owner
                 h.Status = STATE_AGENT // and mark it in the state of house owner
+		h.Money = _money 
         } else {        // Otherwise if there is an error
                 fmt.Printf("houseowner_to_agent: Permission Denied")
                 return nil, errors.New(fmt.Sprintf("Permission Denied. houseowner_to_agent"))
@@ -383,7 +386,7 @@ func (t *SimpleChaincode) houseowner_to_agent(stub shim.ChaincodeStubInterface, 
 //=================================================================================================================================
 //       agent_to_leasee
 //=================================================================================================================================
-func (t *SimpleChaincode) agent_to_leasee(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string) ([]byte, error) {
+func (t *SimpleChaincode) agent_to_leasee(stub shim.ChaincodeStubInterface, h House, caller string, caller_affiliation string, recipient_name string, recipient_affiliation string, _money int) ([]byte, error) {
 
         if  h.Status == STATE_AGENT       &&
           	h.Owner	== caller			&&
@@ -392,6 +395,7 @@ func (t *SimpleChaincode) agent_to_leasee(stub shim.ChaincodeStubInterface, h Ho
 
                 h.Owner  = recipient_name               // then make the owner the new owner
                 h.Status = STATE_LEASEE // and mark it in the state of house owner
+		h.Money = _money
         } else {        // Otherwise if there is an error
                 fmt.Printf("agent_to_leasee: Permission Denied")
                 return nil, errors.New(fmt.Sprintf("Permission Denied. agent_to_leasee"))
